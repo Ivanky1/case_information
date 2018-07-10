@@ -1,0 +1,245 @@
+<?php
+/**
+ * hook_init()
+ */
+function salesforce_sales_for_case_information_init() {
+    if (arg(1) == 'information-case') {
+        drupal_add_css(drupal_get_path('module', 'salesforce_sales_for_case_information') . '/css/sf-sales.css');
+    }
+}
+
+/**
+ * @return array
+ */
+function salesforce_sales_for_case_information_menu() {
+    $items['information-case'] = array(
+        'title' => 'Информация по обращениям в техническую поддержку',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('salesforce_sales_for_case_information_form'),
+        'access callback' => 'salesforce_sales_for_case_information_access',
+    );
+    $items['information-case/%'] = array(
+        'title' => 'Журнал обращений',
+        'page callback' => 'salesforce_sales_for_case_information_content',
+        'page arguments' => array(2),
+        'access callback' => 'salesforce_sales_for_case_information_access',
+    );
+
+    return $items;
+}
+
+/**
+ * @return bool
+ */
+function salesforce_sales_for_case_information_access() {
+    global $user;
+
+    if (array_key_exists(3, $user->roles) || array_key_exists(9, $user->roles)) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+/**
+ * @param $form
+ * @param $form_state
+ * @return mixed
+ */
+function salesforce_sales_for_case_information_form($form, &$form_state) {
+    $form['search_data'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Поиск обращений:',
+        '#required' => TRUE,
+        '#attributes' => array(
+            'placeholder' => array('Введите номер обращения либо название организации')
+        ),
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => 'Найти'
+    );
+
+    if (isset($form_state['results']['#markup'])) {
+        $form['results'] = array(
+            '#markup' => $form_state['results']['#markup']
+        );
+        unset($form_state['results']['#markup']);
+    }
+
+    return $form;
+}
+
+/**
+ * @param $form
+ * @param $form_state
+ */
+function salesforce_sales_for_case_information_form_validate($form, &$form_state) {
+    $form_state['values']['search_data'] = strip_tags(addslashes(trim($form_state['values']['search_data'])));
+}
+
+/**
+ * @return mixed
+ */
+function salesforce_sales_for_case_informationConnect() {
+    module_invoke('test', 'test');
+    $sf_connect = get_salesforce_connect();
+    return $sf_connect;
+}
+
+/**
+ * @param $email
+ * @return bool
+ */
+function salesforce_sales_for_case_informationIsWrongUser($email) {
+    global $user;
+    $user_mails = array('test@test.com');
+
+    if (strcasecmp($email, $user->mail) != 0 && !in_array(strtolower($user->mail), $user_mails)) {
+        return TRUE;
+    } else {
+        return FALSE;
+    }
+}
+
+/**
+ * @param $form
+ * @param $form_state
+ */
+function salesforce_sales_for_case_information_form_submit($form, &$form_state) {
+
+    if (is_numeric($form_state['values']['search_data'])) {
+        drupal_goto(base_path() . 'information-case/' . $form_state['values']['search_data']);
+    }
+
+
+    $sf_connect = salesforce_sales_for_case_informationConnect();
+
+    $q = "select Id, Account.Owner.Email, CreatedDate, Status, Subject, Contact.Name, CaseNumber, Account.Parent.Owner.Email
+          from Case
+          where Account.Name = '{$form_state['values']['search_data']}'
+          and Id in (select ParentId from EmailMessage where Parent.Account.Name = '{$form_state['values']['search_data']}')
+          order by CreatedDate desc LIMIT 200";
+
+    try {
+        $res = $sf_connect->query($q);
+    } catch (Exception $e) {
+        drupal_set_message('Ошибка: не удалось подключиться к серверу сообщений !', 'error');
+        return;
+    }
+
+
+    $res = $res->records;
+
+    if (!count($res)) {
+        drupal_set_message('Возможно вы не правильно ввели название компании, либо обращения отсутсвуют');
+        return;
+    }
+
+    if (salesforce_sales_for_case_informationIsWrongUser($res[0]->Account->Owner->Email) && salesforce_sales_for_case_informationIsWrongUser($res[0]->Account->Parent->Owner->Email)) {
+        drupal_set_message('Нет доступа к обращению, потому что организация закреплена за другим ответственным. Ответственный - ' . $res[0]->Account->Owner->Email);
+        return;
+    }
+
+    $header = ['Номер обращения', 'Контакт организации', 'Тема обращения', 'Статус', 'Дата'];
+    $data = [];
+
+    foreach ($res as $item) {
+        switch ($item->Status) {
+            case 'Ожидание':
+                $class = 'red';
+                break;
+            case 'Закрытый':
+                $class = 'green';
+                break;
+            default:
+                $class = 'yellow';
+                break;
+        }
+        $data[] = [
+            l($item->CaseNumber, 'information-case/' . $item->CaseNumber, array('attributes' => array('class' => array('bold')))),
+            $item->Contact->Name,
+            $item->Subject,
+            '<span class="bold ' . $class . '">' . $item->Status . '</span>',
+            date("d.m.Y H:i", strtotime($item->CreatedDate))
+        ];
+    }
+
+    $table = theme('table', [
+        'header' => $header,
+        'rows' => $data,
+    ]);
+    $form_state['results']['#markup'] = $table;
+    $form_state['rebuild'] = TRUE;
+}
+
+/**
+ * @param $search_data
+ * @return mixed
+ */
+function salesforce_sales_for_case_information_content($search_data) {
+
+    $sf_connect = salesforce_sales_for_case_informationConnect();
+
+    $q = "select Id, TextBody, Incoming, Parent.Status, Parent.Subject, Parent.Account.Owner.Email, CreatedDate, Parent.Account.Parent.Owner.Email
+          from EmailMessage
+          where ParentId in (
+          select Id from Case
+          where CaseNumber = '{$search_data}')
+          order by CreatedDate";
+
+    try {
+        $res = $sf_connect->query($q);
+    } catch (Exception $e) {
+        $content = 'Ошибка: не удалось подключиться к серверу сообщений !';
+        return $content;
+    }
+
+    $messages = '';
+    $status = '';
+    $sub = '';
+    $res = $res->records;
+
+    if (!count($res)) {
+        $content = 'Обращение не найдено';
+        return $content;
+    }
+
+    if (salesforce_sales_for_case_informationIsWrongUser($res[0]->Parent->Account->Owner->Email) && salesforce_sales_for_case_informationIsWrongUser($res[0]->Parent->Account->Parent->Owner->Email)) {
+        $content = 'Нет доступа к обращению, потому что организация закреплена за другим ответственным. Ответственный - ' . $res[0]->Parent->Account->Owner->Email;
+        return $content;
+    }
+
+    foreach ($res as $item) {
+        $status = $item->Parent->Status;
+        $sub = $item->Parent->Subject;
+        $from = 'Исходящее';
+        $class = '';
+
+        if ($item->Incoming) {
+            $from = 'Входящее';
+            $class = ' incoming';
+        }
+
+        $date_created = date("d.m.Y H:i", strtotime($item->CreatedDate));
+        $messages .= '<div class="message_wrapper' . $class . '">
+                         <div class="message_header"><span>&nbsp;Дата: ' . $date_created . '</span>
+                            <span class="right"> Тип: ' . $from . '</span>
+                         </div>
+                         <div class="message_body">' . nl2br($item->TextBody) . '</div>
+                      </div>';
+    }
+
+    $content = '';
+    $form = drupal_get_form('salesforce_sales_for_case_information_form');
+
+    if (isset($form['results']['#markup'])) {
+        return render($form);
+    } else {
+        $content .= render($form) . '<div class="header_results"></br>
+                                        <span>Статус: ' . $status . '</span>
+                                        <span class="right subject">Тема: ' . $sub . '</span>
+                                     </div>' . $messages;
+        return $content;
+    }
+}

@@ -1,0 +1,88 @@
+.message_wrapper {
+    max-width: 45%;
+    max-height: 350px;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    border: 1px solid #ffffff
+}
+
+.incoming {
+    margin-left: 50%;
+}
+
+.message_header {
+    font-weight: bold;
+    font-size: 12px;
+    background: #e3e3e3;
+    border-radius: 6px 6px 0px 0px;
+}
+
+.message_body {
+    overflow-x: hidden;
+    max-height: 300px;
+    padding: 14px 10px 10px 10px;
+    border-radius: 0px 0px 6px 6px;
+    background: #fef0b3;
+}
+
+.error {
+    border-left: 4px solid red;
+}
+
+.message_body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.message_body::-webkit-scrollbar-track {
+    -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+}
+
+.message_body::-webkit-scrollbar-thumb {
+    -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+}
+
+.right {
+    max-width: 335px;
+    float: right;
+    margin-right: 10px;
+}
+
+span {
+    padding-left: 8px !important;
+    font-size: 20px;
+    font-weight: bold !important;
+    color: rgb(16, 141, 74);
+}
+
+.form-item-search-data {
+    font-weight: bold;
+    display: inline;
+}
+
+.header_results {
+    margin: 22px 0px 15px 0px !important;
+}
+
+th {
+    font-weight: bold !important;
+}
+
+.subject {
+    font-size: 18px;
+}
+
+.bold {
+    font-weight: bold;
+}
+
+.red {
+    color: red;
+}
+
+.green {
+    color: green;
+}
+
+.yellow {
+    color: #a3b518;
+}

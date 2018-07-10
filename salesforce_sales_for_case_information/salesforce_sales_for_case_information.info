@@ -1,0 +1,4 @@
+name = salesforce_sales_for_case_information
+description = Информация по обращениям заказчиков в техническую поддержку АО "Инфовотч" с полем "Номер обращения" и кнопкой "Найти"
+version = 7.x-1.x-dev
+core = 7.x
